@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Environment
+.env
+server/.env
+*.env.local
+
+# Database (legacy local SQLite file, kept on disk but never committed)
+server/prisma/*.db
+server/prisma/*.db-journal
+server/prisma/data/
+server/data/
+*.sqlite
+*.sqlite3
+
+# Backups
+backups/
+server/backups/
+
+# Build output
+client/dist/
+client/build/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/

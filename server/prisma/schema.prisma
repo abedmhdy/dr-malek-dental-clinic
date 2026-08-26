@@ -1,0 +1,148 @@
+// Prisma schema for the Dental Clinic Management System.
+//
+// Database: PostgreSQL (cloud-hosted — see CLOUD-DATABASE.md), so the
+// same doctor account and clinic data are reachable from any computer, not
+// tied to one machine's local disk.
+//
+// "url" is the pooled connection (used by the running app, many short-lived
+// connections). "directUrl" is the unpooled connection Prisma's migration
+// engine needs to run DDL (CREATE TABLE etc.) — pooler connections
+// (PgBouncer, used by both Neon and Supabase) do not support the session
+// features migrations require. Both point at the same database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Roles are modeled now so staff accounts can be added later without a
+// schema change. Only DOCTOR currently gets full clinical access in the app.
+// Kept as a plain string (constrained at the application layer to:
+// "DOCTOR" | "ASSISTANT" | "RECEPTIONIST") rather than a Postgres enum, so
+// adding a new role never requires an enum-alteration migration.
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  fullNameEn   String
+  fullNameAr   String
+  fullNameHe   String
+  role         String   @default("DOCTOR")
+  isActive     Boolean  @default(true)
+  failedLoginCount Int  @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  appointments Appointment[]
+  visits       Visit[]
+  auditLogs    AuditLog[]
+}
+
+model Patient {
+  id             Int      @id @default(autoincrement())
+  patientNumber  String   @unique // e.g. P-000001
+  firstName      String
+  lastName       String
+  phone          String
+  secondaryPhone String?
+  email          String?
+  dateOfBirth    String?  // stored as "YYYY-MM-DD" to avoid timezone drift
+  gender         String?
+  address        String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([phone])
+  @@index([lastName, firstName])
+}
+
+model Appointment {
+  id            Int      @id @default(autoincrement())
+  patientId     Int
+  doctorId      Int
+  date          String   // "YYYY-MM-DD" (clinic-local, no UTC conversion)
+  startTime     String   // "HH:mm" (24h, clinic-local)
+  endTime       String   // "HH:mm"
+  duration      Int      // minutes
+  treatmentType String
+  reason        String?
+  notes         String?
+  status        String   @default("SCHEDULED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  User    @relation(fields: [doctorId], references: [id])
+  visit   Visit?
+
+  @@index([date])
+  @@index([patientId])
+  @@index([doctorId, date])
+  @@index([date, startTime])
+}
+
+model Visit {
+  id                      Int      @id @default(autoincrement())
+  patientId               Int
+  appointmentId           Int?     @unique
+  doctorId                Int
+  visitDate               String   // "YYYY-MM-DD"
+  visitTime               String   // "HH:mm"
+  treatmentType           String
+  treatmentDescription    String?
+  notes                   String?
+  nextVisitRecommendedDate String? // "YYYY-MM-DD"
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  doctor      User         @relation(fields: [doctorId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([patientId])
+  @@index([visitDate])
+  @@index([patientId, visitDate])
+}
+
+// Singleton-style settings row (id always 1).
+model Settings {
+  id                      Int      @id @default(1)
+  clinicNameEn            String   @default("Dr. Malek Abu Sholdom Dental Clinic")
+  clinicNameAr            String   @default("عيادة د. مالك أبو شلدوم لطب الأسنان")
+  clinicNameHe            String   @default("מרפאת השיניים של ד\"ר מאלק אבו שלדום")
+  doctorNameEn            String   @default("Dr. Malek Abu Sholdom")
+  doctorNameAr            String   @default("د. مالك أبو شلدوم")
+  doctorNameHe            String   @default("ד\"ר מאלק אבו שלדום")
+  defaultLanguage         String   @default("ar")
+  defaultAppointmentDuration Int   @default(30)
+  workingHoursJson        String   @default("{\"0\":{\"closed\":true},\"1\":{\"open\":\"09:00\",\"close\":\"18:00\"},\"2\":{\"open\":\"09:00\",\"close\":\"18:00\"},\"3\":{\"open\":\"09:00\",\"close\":\"18:00\"},\"4\":{\"open\":\"09:00\",\"close\":\"18:00\"},\"5\":{\"open\":\"09:00\",\"close\":\"14:00\"},\"6\":{\"closed\":true}}")
+  autoLockMinutes         Int      @default(15)
+  updatedAt               DateTime @updatedAt
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String   // e.g. LOGIN, LOGOUT, PATIENT_CREATED, APPOINTMENT_CANCELLED
+  entityType String?  // e.g. "Patient", "Appointment", "Visit"
+  entityId   Int?
+  details    String?  // JSON string, never contains secrets/passwords
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([userId])
+}
