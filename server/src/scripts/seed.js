@@ -14,7 +14,7 @@ async function main() {
         username: 'drmalek',
         passwordHash: await bcrypt.hash('ChangeMe123!', 12),
         fullNameEn: 'Dr. Malek Abu Sholdom',
-        fullNameAr: 'د. مالك أبو شلدوم',
+        fullNameAr: 'د. مالك أبو شلظم',
         fullNameHe: 'ד"ר מאלק אבו שלדום',
         role: 'DOCTOR',
       },

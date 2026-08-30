@@ -9,6 +9,7 @@ export const updateSettings = (payload) => client.put('/settings', payload).then
 
 export const listBackups = () => client.get('/settings/backups').then((r) => r.data);
 export const createBackup = () => client.post('/settings/backups').then((r) => r.data);
+export const getBackupStatus = () => client.get('/settings/backups/status').then((r) => r.data);
 export const backupDownloadUrl = (file) =>
   `${client.defaults.baseURL}/settings/backups/${encodeURIComponent(file)}/download`;
 

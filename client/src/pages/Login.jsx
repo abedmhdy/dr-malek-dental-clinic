@@ -90,7 +90,7 @@ export default function Login() {
 
 function doctorNameForLang() {
   const lang = document.documentElement.lang;
-  if (lang === 'ar') return 'د. مالك أبو شلدوم';
+  if (lang === 'ar') return 'د. مالك أبو شلظم';
   if (lang === 'he') return 'ד"ר מאלק אבו שלדום';
   return 'Dr. Malek Abu Sholdom';
 }

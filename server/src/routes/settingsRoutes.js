@@ -9,6 +9,7 @@ router.use(requireAuth);
 router.get('/', settingsController.getSettings);
 router.put('/', requireRole('DOCTOR'), settingsController.updateSettings);
 
+router.get('/backups/status', requireRole('DOCTOR'), backupController.status);
 router.get('/backups', requireRole('DOCTOR'), backupController.list);
 router.post('/backups', requireRole('DOCTOR'), backupController.create);
 router.get('/backups/:file/download', requireRole('DOCTOR'), backupController.download);

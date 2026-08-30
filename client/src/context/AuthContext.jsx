@@ -10,8 +10,19 @@ export function AuthProvider({ children }) {
   const [locked, setLocked] = useState(false);
   const [autoLockMinutes, setAutoLockMinutes] = useState(15);
   const inactivityTimer = useRef(null);
+  const fetchedMeRef = useRef(false);
 
   useEffect(() => {
+    // Guards against React StrictMode's dev-mode double-invocation of this
+    // effect: without this, two concurrent GET /auth/me requests go out
+    // before any session cookie exists, each gets handed a *different*
+    // session/CSRF token, and whichever response resolves last can leave
+    // the browser's cookie and our in-memory CSRF token mismatched — the
+    // next request (login) then fails CSRF ("session expired") instead of
+    // reaching the real username/password check.
+    if (fetchedMeRef.current) return;
+    fetchedMeRef.current = true;
+
     authApi
       .fetchMe()
       .then((u) => setUser(u))

@@ -8,6 +8,10 @@ const list = asyncHandler(async (req, res) => {
   res.json(backupService.listBackups());
 });
 
+const status = asyncHandler(async (req, res) => {
+  res.json(backupService.readStatus());
+});
+
 const create = asyncHandler(async (req, res) => {
   const destPath = await backupService.createBackup();
   await logAction({ userId: req.session.user.id, action: 'BACKUP_CREATED', ipAddress: req.ip });
@@ -27,4 +31,4 @@ const download = asyncHandler(async (req, res, next) => {
   });
 });
 
-module.exports = { list, create, download };
+module.exports = { list, create, download, status };

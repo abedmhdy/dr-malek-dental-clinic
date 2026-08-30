@@ -8,6 +8,8 @@ const dashboardRoutes = require('./dashboardRoutes');
 const searchRoutes = require('./searchRoutes');
 const settingsRoutes = require('./settingsRoutes');
 const exportRoutes = require('./exportRoutes');
+const treatmentPlanRoutes = require('./treatmentPlanRoutes');
+const paymentRoutes = require('./paymentRoutes');
 
 const router = express.Router();
 
@@ -19,5 +21,7 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/search', searchRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/export', exportRoutes);
+router.use('/treatment-plans', treatmentPlanRoutes);
+router.use('/payments', paymentRoutes);
 
 module.exports = router;

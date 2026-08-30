@@ -208,6 +208,33 @@ change) from the dashboard in seconds. This is the recommended first line
 of defense — check current retention details for your plan at
 https://neon.com/docs/introduction/point-in-time-restore.
 
+### Automatic backups (this app)
+
+The backend now also runs its own periodic backup, independent of Neon's
+PITR above. On every startup, and then every few hours while it keeps
+running, it checks: *"is the last successful backup older than 24 hours (or
+missing)?"* — if so, it runs one automatically via the same `pg_dump` path
+as the manual button. This "check on startup + periodically after" design
+(rather than a fixed clock time like "every day at 2am") is deliberate: the
+desktop app is only running while the doctor has it open, so a fixed-time
+schedule could be missed entirely on a day the app opens late or closes
+early.
+
+- **Check interval while running:** every 6 hours (`AUTO_BACKUP_CHECK_INTERVAL_HOURS`)
+- **Backup considered stale after:** 24 hours since the last success (`AUTO_BACKUP_MAX_AGE_HOURS`)
+- **Retention:** the 30 most recent backups are kept; older ones are deleted
+  automatically after each successful backup (`BACKUP_RETENTION_COUNT`).
+  Backups are never overwritten (each is uniquely timestamped) and the
+  currently-newest backup is never pruned.
+- **Status:** every attempt (automatic or manual) is recorded to
+  `server/backups/backup-status.json` — last success, last failure (with a
+  short, redacted reason — never the connection string), and the next
+  scheduled check. This also appears in the app under **Settings → Backup
+  Status**. Automatic runs are also written to the in-app audit log
+  (`BACKUP_AUTO_CREATED` / `BACKUP_AUTO_FAILED`).
+- All three env vars above are optional overrides — sensible defaults apply
+  if unset.
+
 ### Manual backups (this app)
 
 **From the app:** Settings → Backup → **Create Backup Now**. This runs
@@ -227,7 +254,10 @@ tools) must be installed on the machine running the backend. On Windows,
 installing PostgreSQL itself (even if you don't use its local server)
 provides these — see https://www.postgresql.org/download/windows/, or
 install just the client tools. If they're installed somewhere not on the
-system `PATH`, set `PG_BIN_DIR` in `server/.env` to their `bin` folder.
+system `PATH`, set `PG_BIN_DIR` in `server/.env` to their `bin` folder. If
+these tools are missing, both manual and automatic backups fail cleanly
+(recorded as a failure in Backup Status) — nothing else in the app is
+affected.
 
 ### Restoring a backup
 
@@ -240,6 +270,26 @@ This restores into whatever database `DATABASE_URL`/`DIRECT_URL` currently
 point to. For disaster recovery onto a **new** empty Neon project (e.g. the
 original project was somehow lost), point `.env` at the new project first,
 run `npx prisma migrate deploy` to create the schema, then run the restore.
+
+### Testing that a backup is actually restorable
+
+A backup file that has never been restored is unverified. Test this
+periodically — **never against the live production database** — using a
+disposable target instead:
+
+1. **Easiest: a Neon branch.** In the Neon dashboard, create a branch of the
+   project (an instant, separate copy). Copy that branch's connection
+   strings into a scratch `.env` (or pass them inline), then run
+   `npm run restore -- <backup-file>.sql` pointed at the branch. Check the
+   row counts / spot-check a few patients and appointments, then delete the
+   branch when done — the live database was never touched.
+2. **Alternative: a throwaway local Postgres.** Install Postgres locally (or
+   use a disposable Docker container), create an empty database, run
+   `npx prisma migrate deploy` against it to build the schema, then restore
+   the backup file into it and verify the data.
+
+Either way, the goal is the same: confirm the `.sql` file actually contains
+real, restorable data before trusting it as a disaster-recovery plan.
 
 ---
 

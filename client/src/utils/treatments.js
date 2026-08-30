@@ -28,3 +28,7 @@ export const APPOINTMENT_STATUSES = [
 ];
 
 export const DURATION_OPTIONS = [15, 30, 45, 60];
+
+export const PAYMENT_METHODS = ['CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'CHECK', 'OTHER'];
+
+export const TREATMENT_PLAN_STATUSES = ['ACTIVE', 'COMPLETED', 'CANCELLED'];

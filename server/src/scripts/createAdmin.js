@@ -55,7 +55,7 @@ async function main() {
         username,
         passwordHash,
         fullNameEn: 'Dr. Malek Abu Sholdom',
-        fullNameAr: 'د. مالك أبو شلدوم',
+        fullNameAr: 'د. مالك أبو شلظم',
         fullNameHe: 'ד"ר מאלק אבו שלדום',
         role: 'DOCTOR',
       },

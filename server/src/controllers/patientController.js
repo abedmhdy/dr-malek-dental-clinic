@@ -2,6 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const patientService = require('../services/patientService');
 const appointmentService = require('../services/appointmentService');
 const visitService = require('../services/visitService');
+const financeService = require('../services/financeService');
 const { logAction } = require('../services/auditService');
 
 const list = asyncHandler(async (req, res) => {
@@ -68,4 +69,25 @@ const visits = asyncHandler(async (req, res) => {
   res.json(list_);
 });
 
-module.exports = { list, checkDuplicates, create, getOne, update, archive, appointments, visits };
+const financialSummary = asyncHandler(async (req, res) => {
+  const summary = await financeService.getPatientFinancialSummary(req.params.id);
+  res.json(summary);
+});
+
+const payments = asyncHandler(async (req, res) => {
+  const list_ = await financeService.listPaymentsForPatient(req.params.id);
+  res.json(list_);
+});
+
+module.exports = {
+  list,
+  checkDuplicates,
+  create,
+  getOne,
+  update,
+  archive,
+  appointments,
+  visits,
+  financialSummary,
+  payments,
+};

@@ -7,13 +7,19 @@ import {
   getPatientAppointments,
   getPatientVisits,
 } from '../api/patients';
+import { getFinancialSummary, getPatientPayments } from '../api/finance';
 import { patientHistoryExportUrl } from '../api/misc';
 import { PageSpinner } from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
 import PhoneActions from '../components/common/PhoneActions';
 import StatusBadge from '../components/common/StatusBadge';
 import VisitModal from '../components/appointments/VisitModal';
+import FinancialSummaryCard from '../components/finance/FinancialSummaryCard';
+import PaymentForm from '../components/finance/PaymentForm';
+import TreatmentPlanForm from '../components/finance/TreatmentPlanForm';
+import PaymentsList from '../components/finance/PaymentsList';
 import { calculateAge, formatFullDate, formatShortDate, todayStr } from '../utils/dateFormat';
+import { formatMoney } from '../utils/money';
 import { useUI } from '../context/UIContext';
 
 export default function PatientProfile() {
@@ -25,20 +31,28 @@ export default function PatientProfile() {
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [financialSummary, setFinancialSummary] = useState(null);
+  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addingVisit, setAddingVisit] = useState(false);
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [addingTreatmentPlan, setAddingTreatmentPlan] = useState(false);
   const [expandedVisit, setExpandedVisit] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [p, appts, v] = await Promise.all([
+    const [p, appts, v, fin, pays] = await Promise.all([
       getPatient(id),
       getPatientAppointments(id),
       getPatientVisits(id),
+      getFinancialSummary(id),
+      getPatientPayments(id),
     ]);
     setPatient(p);
     setAppointments(appts);
     setVisits(v);
+    setFinancialSummary(fin);
+    setPayments(pays);
     setLoading(false);
   }, [id]);
 
@@ -61,6 +75,10 @@ export default function PatientProfile() {
     toast.success('messages.patientSaved');
     navigate('/patients');
   };
+
+  // Live (non-voided) payments recorded during a given visit, for the
+  // "payment made during this visit" line in the timeline below.
+  const paymentsForVisit = (visitId) => payments.filter((p) => p.visitId === visitId && !p.voidedAt);
 
   return (
     <div>
@@ -121,6 +139,12 @@ export default function PatientProfile() {
         </div>
       </div>
 
+      <FinancialSummaryCard
+        summary={financialSummary}
+        onAddPayment={() => setAddingPayment(true)}
+        onAddTreatmentPlan={() => setAddingTreatmentPlan(true)}
+      />
+
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">{t('appointment.appointment')}</div>
         {appointments.length === 0 ? (
@@ -135,48 +159,62 @@ export default function PatientProfile() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">{t('visit.visitHistory')}</div>
         {visits.length === 0 ? (
           <EmptyState icon="🩺" messageKey="empty.noVisits" />
         ) : (
           <div className="timeline">
-            {visits.map((v) => (
-              <div key={v.id} className="timeline-item">
-                <div className="timeline-date">{formatFullDate(v.visitDate, i18n.language)} · {v.visitTime}</div>
-                <div className="timeline-card">
-                  <strong>{t(`treatments.${v.treatmentType}`, v.treatmentType)}</strong>
-                  {(expandedVisit === v.id || !v.notes) && v.treatmentDescription && (
-                    <p style={{ margin: '6px 0' }}>{v.treatmentDescription}</p>
-                  )}
-                  {expandedVisit === v.id && (
-                    <>
-                      {v.notes && <p style={{ margin: '6px 0' }}><strong>{t('visit.notes')}:</strong> {v.notes}</p>}
-                      {v.nextVisitRecommendedDate && (
-                        <p style={{ margin: '6px 0' }}>
-                          <strong>{t('visit.nextVisitRecommended')}:</strong> {formatShortDate(v.nextVisitRecommendedDate, i18n.language)}
-                        </p>
-                      )}
-                      <p className="text-muted" style={{ fontSize: 12 }}>
-                        {t('visit.createdAt')}: {new Date(v.createdAt).toLocaleString()}
+            {visits.map((v) => {
+              const visitPayments = paymentsForVisit(v.id);
+              return (
+                <div key={v.id} className="timeline-item">
+                  <div className="timeline-date">{formatFullDate(v.visitDate, i18n.language)} · {v.visitTime}</div>
+                  <div className="timeline-card">
+                    <strong>{t(`treatments.${v.treatmentType}`, v.treatmentType)}</strong>
+                    {(expandedVisit === v.id || !v.notes) && v.treatmentDescription && (
+                      <p style={{ margin: '6px 0' }}>{v.treatmentDescription}</p>
+                    )}
+                    {visitPayments.map((p) => (
+                      <p key={p.id} style={{ margin: '6px 0', color: 'var(--color-success)' }}>
+                        <strong>{t('finance.payment')}:</strong> {formatMoney(p.amount, p.treatmentPlan?.currency)}
+                        {' · '}
+                        <span className="text-muted">
+                          {t('finance.balanceAfterPayment')}: {formatMoney(p.balanceAfterPayment, p.treatmentPlan?.currency)}
+                        </span>
                       </p>
-                    </>
-                  )}
-                  {(v.notes || v.nextVisitRecommendedDate) && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-ghost no-print"
-                      onClick={() => setExpandedVisit(expandedVisit === v.id ? null : v.id)}
-                    >
-                      {expandedVisit === v.id ? t('common.close') : t('common.viewAll')}
-                    </button>
-                  )}
+                    ))}
+                    {expandedVisit === v.id && (
+                      <>
+                        {v.notes && <p style={{ margin: '6px 0' }}><strong>{t('visit.notes')}:</strong> {v.notes}</p>}
+                        {v.nextVisitRecommendedDate && (
+                          <p style={{ margin: '6px 0' }}>
+                            <strong>{t('visit.nextVisitRecommended')}:</strong> {formatShortDate(v.nextVisitRecommendedDate, i18n.language)}
+                          </p>
+                        )}
+                        <p className="text-muted" style={{ fontSize: 12 }}>
+                          {t('visit.createdAt')}: {new Date(v.createdAt).toLocaleString()}
+                        </p>
+                      </>
+                    )}
+                    {(v.notes || v.nextVisitRecommendedDate) && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost no-print"
+                        onClick={() => setExpandedVisit(expandedVisit === v.id ? null : v.id)}
+                      >
+                        {expandedVisit === v.id ? t('common.close') : t('common.viewAll')}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      <PaymentsList patientId={Number(id)} payments={payments} plans={financialSummary.plans} visits={visits} onChanged={load} />
 
       {addingVisit && (
         <VisitModal
@@ -184,6 +222,32 @@ export default function PatientProfile() {
           onClose={() => setAddingVisit(false)}
           onSaved={() => {
             setAddingVisit(false);
+            load();
+          }}
+        />
+      )}
+
+      {addingTreatmentPlan && (
+        <TreatmentPlanForm
+          patientId={Number(id)}
+          onClose={() => setAddingTreatmentPlan(false)}
+          onSaved={() => {
+            setAddingTreatmentPlan(false);
+            toast.success('messages.treatmentPlanSaved');
+            load();
+          }}
+        />
+      )}
+
+      {addingPayment && (
+        <PaymentForm
+          patientId={Number(id)}
+          plans={financialSummary.plans}
+          visits={visits}
+          onClose={() => setAddingPayment(false)}
+          onSaved={() => {
+            setAddingPayment(false);
+            toast.success('messages.paymentSaved');
             load();
           }}
         />

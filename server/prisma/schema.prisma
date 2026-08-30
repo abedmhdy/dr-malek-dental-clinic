@@ -11,7 +11,15 @@
 // features migrations require. Both point at the same database.
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  // "binary" runs the query engine as its own small .exe subprocess instead
+  // of loading a native Node addon in-process. The packaged desktop app
+  // spawns the backend under Electron's bundled Node runtime (so a doctor's
+  // PC never needs Node.js installed) — a native addon built against one
+  // Node ABI can silently fail to load under a different one, but a
+  // subprocess talks over a stable protocol regardless of which runtime
+  // launched it, so this sidesteps that whole class of packaging failure.
+  engineType = "binary"
 }
 
 datasource db {
@@ -39,9 +47,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  appointments Appointment[]
-  visits       Visit[]
-  auditLogs    AuditLog[]
+  appointments    Appointment[]
+  visits          Visit[]
+  auditLogs       AuditLog[]
+  paymentsCreated Payment[] @relation("PaymentCreatedBy")
+  paymentsVoided  Payment[] @relation("PaymentVoidedBy")
 }
 
 model Patient {
@@ -60,8 +70,10 @@ model Patient {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  appointments Appointment[]
-  visits       Visit[]
+  appointments   Appointment[]
+  visits         Visit[]
+  treatmentPlans TreatmentPlan[]
+  payments       Payment[]
 
   @@index([phone])
   @@index([lastName, firstName])
@@ -82,9 +94,10 @@ model Appointment {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  patient Patient @relation(fields: [patientId], references: [id])
-  doctor  User    @relation(fields: [doctorId], references: [id])
-  visit   Visit?
+  patient  Patient   @relation(fields: [patientId], references: [id])
+  doctor   User      @relation(fields: [doctorId], references: [id])
+  visit    Visit?
+  payments Payment[]
 
   @@index([date])
   @@index([patientId])
@@ -109,20 +122,79 @@ model Visit {
   patient     Patient      @relation(fields: [patientId], references: [id])
   doctor      User         @relation(fields: [doctorId], references: [id])
   appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  payments    Payment[]
 
   @@index([patientId])
   @@index([visitDate])
   @@index([patientId, visitDate])
 }
 
+// A patient's agreed course of treatment with a total price (e.g. "Orthodontic
+// braces — ₪5,000"). Payments are recorded against a plan; the plan's balance
+// is always derived (totalPrice minus the sum of its non-voided payments),
+// never stored, so it can never drift out of sync with the payment ledger.
+model TreatmentPlan {
+  id            Int       @id @default(autoincrement())
+  patientId     Int
+  title         String
+  description   String?
+  totalPrice    Decimal   @db.Decimal(10, 2)
+  currency      String    @default("ILS")
+  status        String    @default("ACTIVE") // ACTIVE | COMPLETED | CANCELLED
+  startDate     String?   // "YYYY-MM-DD"
+  completedDate String?   // "YYYY-MM-DD"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  patient  Patient   @relation(fields: [patientId], references: [id])
+  payments Payment[]
+
+  @@index([patientId])
+}
+
+// A single payment against a treatment plan. Payments are financial records,
+// not a mutable balance — they are never hard-deleted. Correcting a mistake
+// happens either by editing (the change is written to AuditLog) or by
+// voiding (voidedAt/voidedReason set, excluded from balance calculations,
+// but the row — and the fact that it happened — stays visible in history).
+model Payment {
+  id              Int       @id @default(autoincrement())
+  patientId       Int
+  treatmentPlanId Int
+  visitId         Int?
+  appointmentId   Int?
+  amount          Decimal   @db.Decimal(10, 2)
+  paymentDate     String    // "YYYY-MM-DD"
+  paymentMethod   String?   // CASH | CREDIT_CARD | BANK_TRANSFER | CHECK | OTHER
+  notes           String?
+  createdByUserId Int
+  voidedAt        DateTime?
+  voidedReason    String?
+  voidedByUserId  Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  treatmentPlan TreatmentPlan @relation(fields: [treatmentPlanId], references: [id])
+  visit         Visit?        @relation(fields: [visitId], references: [id])
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
+  createdBy     User          @relation("PaymentCreatedBy", fields: [createdByUserId], references: [id])
+  voidedBy      User?         @relation("PaymentVoidedBy", fields: [voidedByUserId], references: [id])
+
+  @@index([patientId])
+  @@index([treatmentPlanId])
+  @@index([paymentDate])
+  @@index([visitId])
+}
+
 // Singleton-style settings row (id always 1).
 model Settings {
   id                      Int      @id @default(1)
   clinicNameEn            String   @default("Dr. Malek Abu Sholdom Dental Clinic")
-  clinicNameAr            String   @default("عيادة د. مالك أبو شلدوم لطب الأسنان")
+  clinicNameAr            String   @default("عيادة د. مالك أبو شلظم لطب الأسنان")
   clinicNameHe            String   @default("מרפאת השיניים של ד\"ר מאלק אבו שלדום")
   doctorNameEn            String   @default("Dr. Malek Abu Sholdom")
-  doctorNameAr            String   @default("د. مالك أبو شلدوم")
+  doctorNameAr            String   @default("د. مالك أبو شلظم")
   doctorNameHe            String   @default("ד\"ר מאלק אבו שלדום")
   defaultLanguage         String   @default("ar")
   defaultAppointmentDuration Int   @default(30)

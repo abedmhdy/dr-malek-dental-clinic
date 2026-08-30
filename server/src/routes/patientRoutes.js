@@ -26,5 +26,7 @@ router.put('/:id', patientValidation, validate, patientController.update);
 router.delete('/:id', patientController.archive);
 router.get('/:id/appointments', patientController.appointments);
 router.get('/:id/visits', patientController.visits);
+router.get('/:id/financial-summary', patientController.financialSummary);
+router.get('/:id/payments', patientController.payments);
 
 module.exports = router;

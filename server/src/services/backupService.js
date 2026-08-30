@@ -4,11 +4,77 @@ const { execFile } = require('child_process');
 const env = require('../config/env');
 
 const BACKUPS_DIR = path.resolve(__dirname, '../../backups');
+const STATUS_FILE = path.join(BACKUPS_DIR, 'backup-status.json');
+
+// How many timestamped backups to keep on disk before pruning the oldest.
+// Overridable via env for a host with different disk/retention needs.
+const RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT || '30', 10);
 
 function ensureBackupsDir() {
   if (!fs.existsSync(BACKUPS_DIR)) {
     fs.mkdirSync(BACKUPS_DIR, { recursive: true });
   }
+}
+
+// Connection strings (and anything resembling one) must never end up in a
+// status file, log line, or any other place a non-DBA might read — pg_dump/
+// psql error output occasionally echoes the argument it was given verbatim.
+function redactConnectionStrings(text) {
+  if (!text) return text;
+  return String(text).replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, 'postgresql://[redacted]');
+}
+
+function readStatus() {
+  ensureBackupsDir();
+  if (!fs.existsSync(STATUS_FILE)) {
+    return { lastSuccess: null, lastFailure: null, nextScheduledAt: null };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8'));
+  } catch {
+    return { lastSuccess: null, lastFailure: null, nextScheduledAt: null };
+  }
+}
+
+function writeStatus(patch) {
+  ensureBackupsDir();
+  const current = readStatus();
+  const next = { ...current, ...patch };
+  fs.writeFileSync(STATUS_FILE, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+
+function recordSuccess(fileName) {
+  return writeStatus({ lastSuccess: { file: fileName, at: new Date().toISOString() } });
+}
+
+// `reason` must already be a short, generic, redacted string — never the
+// raw error/stack, which could otherwise surface connection details.
+function recordFailure(reason) {
+  return writeStatus({
+    lastFailure: { reason: redactConnectionStrings(reason), at: new Date().toISOString() },
+  });
+}
+
+function setNextScheduledAt(isoString) {
+  return writeStatus({ nextScheduledAt: isoString });
+}
+
+// Keeps the most recent RETENTION_COUNT backups and deletes older ones.
+// Never runs before a new backup is safely on disk, so the count is always
+// >= 1 — the backup that was just created — and the only-backup case is
+// never at risk of being pruned away.
+function pruneOldBackups() {
+  const files = listBackups();
+  const toDelete = files.slice(RETENTION_COUNT);
+  for (const f of toDelete) {
+    try {
+      fs.unlinkSync(path.join(BACKUPS_DIR, f.name));
+    } catch (err) {
+      console.error('Failed to prune old backup', f.name, err.message);
+    }
+  }
+  return toDelete.length;
 }
 
 // Prisma accepts a few query-string extensions (schema, pgbouncer,
@@ -56,7 +122,8 @@ function runPgTool(binaryName, args) {
           err.code === 'ENOENT'
             ? ` (${binaryName} not found — install the PostgreSQL client tools, or set PG_BIN_DIR to their "bin" folder)`
             : '';
-        reject(new Error(`${binaryName} failed${hint}: ${stderr || err.message}`));
+        const message = redactConnectionStrings(`${binaryName} failed${hint}: ${stderr || err.message}`);
+        reject(new Error(message));
         return;
       }
       resolve(stdout);
@@ -72,20 +139,28 @@ function runPgTool(binaryName, args) {
 async function createBackup() {
   ensureBackupsDir();
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const destPath = path.join(BACKUPS_DIR, `clinic-backup-${stamp}.sql`);
+  const fileName = `clinic-backup-${stamp}.sql`;
+  const destPath = path.join(BACKUPS_DIR, fileName);
 
-  // pg_dump's argument parser expects the connection string LAST — flags
-  // placed after a positional argument are otherwise treated as more
-  // positional arguments and rejected ("too many command-line arguments").
-  await runPgTool('pg_dump', [
-    '--format=plain',
-    '--no-owner',
-    '--no-privileges',
-    '--file',
-    destPath,
-    sanitizeForLibpq(env.directUrl),
-  ]);
+  try {
+    // pg_dump's argument parser expects the connection string LAST — flags
+    // placed after a positional argument are otherwise treated as more
+    // positional arguments and rejected ("too many command-line arguments").
+    await runPgTool('pg_dump', [
+      '--format=plain',
+      '--no-owner',
+      '--no-privileges',
+      '--file',
+      destPath,
+      sanitizeForLibpq(env.directUrl),
+    ]);
+  } catch (err) {
+    recordFailure(err.message);
+    throw err;
+  }
 
+  recordSuccess(fileName);
+  pruneOldBackups();
   return destPath;
 }
 
@@ -113,4 +188,13 @@ async function restoreBackup(fileName) {
   await runPgTool('psql', ['--file', fullPath, '--set', 'ON_ERROR_STOP=1', sanitizeForLibpq(env.directUrl)]);
 }
 
-module.exports = { createBackup, listBackups, restoreBackup, BACKUPS_DIR, findPgBinary };
+module.exports = {
+  createBackup,
+  listBackups,
+  restoreBackup,
+  BACKUPS_DIR,
+  findPgBinary,
+  readStatus,
+  setNextScheduledAt,
+  RETENTION_COUNT,
+};

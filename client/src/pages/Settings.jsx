@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getSettings, updateSettings, listBackups, createBackup, backupDownloadUrl, todaysAppointmentsExportUrl } from '../api/misc';
+import { getSettings, updateSettings, listBackups, createBackup, backupDownloadUrl, todaysAppointmentsExportUrl, getBackupStatus } from '../api/misc';
 import { unwrapError } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { PageSpinner } from '../components/common/Spinner';
@@ -14,15 +14,17 @@ export default function Settings() {
   const { toast } = useUI();
   const [settings, setSettings] = useState(null);
   const [backups, setBackups] = useState([]);
+  const [backupStatus, setBackupStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [s, b] = await Promise.all([getSettings(), listBackups()]);
+    const [s, b, bs] = await Promise.all([getSettings(), listBackups(), getBackupStatus()]);
     setSettings(s);
     setBackups(b);
+    setBackupStatus(bs);
     setLoading(false);
   }, []);
 
@@ -66,10 +68,16 @@ export default function Settings() {
   };
 
   const handleBackup = async () => {
-    await createBackup();
-    toast.success('messages.backupCreated');
-    const b = await listBackups();
-    setBackups(b);
+    try {
+      await createBackup();
+      toast.success('messages.backupCreated');
+    } catch (err) {
+      toast.error(unwrapError(err).messageKey);
+    } finally {
+      const [b, bs] = await Promise.all([listBackups(), getBackupStatus()]);
+      setBackups(b);
+      setBackupStatus(bs);
+    }
   };
 
   return (
@@ -150,6 +158,36 @@ export default function Settings() {
         <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? t('common.saving') : t('common.save')}
         </button>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">{t('settings.backupStatus')}</div>
+        <div className="form-grid">
+          <div className="form-field">
+            <label>{t('settings.lastSuccessfulBackup')}</label>
+            <div>
+              {backupStatus?.lastSuccess
+                ? new Date(backupStatus.lastSuccess.at).toLocaleString()
+                : t('settings.neverBackedUp')}
+            </div>
+          </div>
+          <div className="form-field">
+            <label>{t('settings.lastFailedBackup')}</label>
+            <div>
+              {backupStatus?.lastFailure
+                ? new Date(backupStatus.lastFailure.at).toLocaleString()
+                : t('settings.noFailedBackups')}
+            </div>
+          </div>
+          <div className="form-field">
+            <label>{t('settings.nextScheduledBackup')}</label>
+            <div>
+              {backupStatus?.nextScheduledAt
+                ? new Date(backupStatus.nextScheduledAt).toLocaleString()
+                : t('settings.notScheduledYet')}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="card">
