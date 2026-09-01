@@ -3,7 +3,8 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { loginAsNewDoctor, unique, teardown } = require('./helpers');
 
-describe('Patients', () => {
+// See health.test.js for why concurrency is forced to 1 across this suite.
+describe('Patients', { concurrency: 1 }, () => {
   test('create, read, and update a patient', async () => {
     const { agent, csrfToken } = await loginAsNewDoctor();
     const seq = unique();

@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 const { app, loginAsNewDoctor, createTestPatient, teardown } = require('./helpers');
 
-describe('Security', () => {
+// See health.test.js for why concurrency is forced to 1 across this suite.
+describe('Security', { concurrency: 1 }, () => {
   test('a state-changing request without a CSRF token is rejected', async () => {
     const { agent } = await loginAsNewDoctor();
     // Deliberately omit X-CSRF-Token.

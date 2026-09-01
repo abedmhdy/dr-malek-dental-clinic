@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 const { app, loginAsNewDoctor, createTestDoctor, teardown } = require('./helpers');
 
-describe('Authentication', () => {
+// See health.test.js for why concurrency is forced to 1 across this suite.
+describe('Authentication', { concurrency: 1 }, () => {
   test('correct login succeeds and returns the safe user shape', async () => {
     const { user, username, password } = await createTestDoctor();
     const agent = request.agent(app);

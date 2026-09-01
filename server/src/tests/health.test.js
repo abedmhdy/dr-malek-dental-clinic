@@ -23,7 +23,13 @@ function checkUnreachableInSubprocess() {
   return { reachable: out === 'true', elapsed: Date.now() - start };
 }
 
-describe('Health check', () => {
+// concurrency: 1 — these tests share one database and real HTTP/session
+// state; Node's test runner runs sibling tests within a describe block
+// concurrently by default, which caused real, hard-to-reproduce races
+// (a payment referencing a user another concurrently-running test had
+// already cleaned up, a session-table creation race). Running everything
+// sequentially trades a little speed for tests that are actually reliable.
+describe('Health check', { concurrency: 1 }, () => {
   test('DB available: /api/health reports 200 and database:"ok"', async () => {
     const res = await request(app).get('/api/health');
     assert.equal(res.status, 200);
