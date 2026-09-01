@@ -1,8 +1,6 @@
-const { app, BrowserWindow, dialog, session, shell } = require('electron');
+const { app, BrowserWindow, dialog, session, shell, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
-const https = require('https');
 const { spawn } = require('child_process');
 
 // Electron derives app.getPath('userData') from app.name, which otherwise
@@ -71,18 +69,34 @@ function parseEnvFile(filePath) {
 // for (local loopback or a remote hosted URL). Resolves true only when the
 // backend is up AND the health endpoint confirms the database is reachable
 // (see server/src/app.js — /api/health checks the DB, not just Express).
+//
+// Uses Electron's own `net` module rather than Node's built-in http/https —
+// `net` runs through Chromium's network stack, the same one the window's
+// own page-load uses, which automatically picks up the OS's system proxy
+// configuration. Node's raw http/https modules do NOT, so on a machine
+// that reaches the internet through a proxy, this check could report
+// "unreachable" and show the offline page even though the actual page
+// (and a normal browser) would have loaded fine.
 function checkHealthOnce(healthUrl) {
   return new Promise((resolve) => {
-    const client = healthUrl.startsWith('https:') ? https : http;
-    const req = client.get(healthUrl, (res) => {
+    const req = net.request(healthUrl);
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    req.on('response', (res) => {
       res.on('data', () => {});
-      res.on('end', () => resolve(res.statusCode === 200));
+      res.on('end', () => finish(res.statusCode === 200));
     });
-    req.on('error', () => resolve(false));
-    req.setTimeout(5000, () => {
-      req.destroy();
-      resolve(false);
-    });
+    req.on('error', () => finish(false));
+    const timer = setTimeout(() => {
+      req.abort();
+      finish(false);
+    }, 5000);
+    req.on('close', () => clearTimeout(timer));
+    req.end();
   });
 }
 
