@@ -1,6 +1,6 @@
 {
   "name": "dr-malek-dental-clinic-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Desktop application for Dr. Malek Abu Sholdom's Dental Clinic Management System",
   "main": "main.js",

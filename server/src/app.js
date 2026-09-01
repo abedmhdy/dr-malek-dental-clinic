@@ -60,9 +60,26 @@ app.get('/api/health', async (req, res) => {
 // needs a separate frontend dev server, and cookies/CSRF work as plain
 // same-origin requests (no cross-origin cookie edge cases to worry about).
 if (env.staticDir) {
-  app.use(express.static(env.staticDir));
+  // index.html is NOT content-hashed (unlike everything under /assets/), so
+  // it's the one file whose staleness actually matters: the app's userData
+  // — including Electron's Chromium HTTP cache — deliberately survives
+  // reinstalls/updates (so config.env and settings persist), which means a
+  // stale cached index.html could otherwise keep pointing at a previous
+  // build's hashed JS/CSS filenames after installing a genuinely newer
+  // version. `no-cache` forces revalidation on every load (still fast — a
+  // 304 when unchanged) instead of risking a silently-stale app.
+  app.use(
+    express.static(env.staticDir, {
+      setHeaders: (res, filePath) => {
+        if (path.basename(filePath) === 'index.html') {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    })
+  );
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(env.staticDir, 'index.html'));
   });
 }
