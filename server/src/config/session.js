@@ -1,12 +1,31 @@
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const env = require('./env');
 
-// MemoryStore is intentional for the v1 local single-user deployment: the
-// doctor simply logs in again after a server restart. When this app is
-// later deployed to a shared server, swap this for a persistent store
-// (e.g. connect-sqlite3 or connect-pg-simple) without touching any route.
+// Persistent, production-safe session store: sessions live in a "session"
+// table in the same Neon database (auto-created on first run if missing —
+// additive only, never touches any existing table/data), so a backend
+// restart (deploy, crash, PC reboot) no longer silently logs everyone out
+// the way the in-memory store did, and it's safe for more than one backend
+// process. Uses the same pooled DATABASE_URL the rest of the app already
+// uses — plain parameterized queries work fine through PgBouncer's
+// transaction-pooling mode, so no separate direct connection is needed here.
+const store = new pgSession({
+  conString: env.databaseUrl,
+  tableName: 'session',
+  createTableIfMissing: true,
+  pruneSessionInterval: 60 * 60, // seconds; expired-session cleanup, not user-facing
+});
+
+store.on('error', (err) => {
+  // Never let a session-store hiccup crash the process — a request that
+  // needs the store will still fail on its own with a normal error.
+  console.error('Session store error:', err.message);
+});
+
 const sessionMiddleware = session({
   name: 'clinic.sid',
+  store,
   secret: env.sessionSecret,
   resave: false,
   saveUninitialized: false,

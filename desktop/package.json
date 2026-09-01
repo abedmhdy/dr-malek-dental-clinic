@@ -1,6 +1,6 @@
 {
   "name": "dr-malek-dental-clinic-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Desktop application for Dr. Malek Abu Sholdom's Dental Clinic Management System",
   "main": "main.js",
@@ -12,10 +12,10 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "^32.0.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^44.1.0",
+    "electron-builder": "^25.1.8",
     "png-to-ico": "^2.1.8",
-    "sharp": "^0.33.5"
+    "sharp": "^0.35.4"
   },
   "build": {
     "appId": "com.drmalek.dentalclinic",
@@ -32,11 +32,13 @@
     "extraResources": [
       {
         "from": "resources/server",
-        "to": "server"
+        "to": "server",
+        "filter": ["**/*"]
       },
       {
         "from": "resources/client-dist",
-        "to": "client-dist"
+        "to": "client-dist",
+        "filter": ["**/*"]
       }
     ],
     "win": {

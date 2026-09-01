@@ -37,3 +37,7 @@ Thumbs.db
 
 # Test
 coverage/
+
+# Code-signing certificates — never committed, see desktop/CODE-SIGNING.md
+*.pfx
+*.p12

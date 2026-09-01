@@ -93,7 +93,9 @@ function buildLocalMode() {
   rmrf(OUT);
 
   console.log('  copying server/src ...');
-  copyDir(path.join(SERVER_SRC, 'src'), path.join(OUT, 'server', 'src'));
+  // 'tests' is excluded — automated tests (and their local-DB setup
+  // scripts/docs) have no reason to ship inside the installed app.
+  copyDir(path.join(SERVER_SRC, 'src'), path.join(OUT, 'server', 'src'), { exclude: ['tests'] });
 
   console.log('  copying server/node_modules (this is the slow step) ...');
   copyDir(path.join(SERVER_SRC, 'node_modules'), path.join(OUT, 'server', 'node_modules'));

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -170,7 +170,42 @@ function stopBackend() {
   }
 }
 
-function createWindow() {
+// Electron security checklist (https://www.electronjs.org/docs/latest/tutorial/security):
+// this app never opens its own popup windows, so any new-window request is
+// either the app's one legitimate case (an external tel:/https:/wa.me link,
+// e.g. the patient WhatsApp button, opened via target="_blank") or something
+// unexpected — external links are handed to the OS's default browser via
+// shell.openExternal instead of letting Electron create an uncontrolled
+// window, and everything else is denied outright.
+function isSafeExternalUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'https:' || url.protocol === 'tel:' || url.protocol === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+function hardenWindowSecurity(win, allowedOrigin) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  // Keeps this window permanently on its own app origin — a compromised or
+  // buggy dependency in the renderer bundle can't navigate it elsewhere.
+  win.webContents.on('will-navigate', (event, url) => {
+    try {
+      if (new URL(url).origin !== allowedOrigin) event.preventDefault();
+    } catch {
+      event.preventDefault();
+    }
+  });
+}
+
+function createWindow(allowedOrigin) {
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -180,10 +215,15 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
   mainWindow.setMenuBarVisibility(false);
+  hardenWindowSecurity(mainWindow, allowedOrigin);
   mainWindow.on('closed', () => {
     mainWindow = null;
     stopBackgroundRecoveryPoll();
@@ -200,8 +240,9 @@ app.whenReady().then(async () => {
   const isRemote = Boolean(config.BACKEND_URL);
   let baseUrl;
   if (isRemote) {
+    let parsed;
     try {
-      baseUrl = new URL(config.BACKEND_URL).origin;
+      parsed = new URL(config.BACKEND_URL);
     } catch {
       dialog.showErrorBox(
         'Dr. Malek Dental Clinic — Configuration Error',
@@ -210,6 +251,17 @@ app.whenReady().then(async () => {
       app.quit();
       return;
     }
+    // Hosted backend credentials/session cookies must never cross a real
+    // network unencrypted — this build only ever talks to it over HTTPS.
+    if (parsed.protocol !== 'https:') {
+      dialog.showErrorBox(
+        'Dr. Malek Dental Clinic — Configuration Error',
+        `BACKEND_URL must use https:// for a hosted backend. Got:\n\n${config.BACKEND_URL}`
+      );
+      app.quit();
+      return;
+    }
+    baseUrl = parsed.origin;
   } else {
     baseUrl = `http://localhost:${PORT}`;
     try {
@@ -230,8 +282,15 @@ app.whenReady().then(async () => {
   const appUrl = `${baseUrl}/login`;
   const healthUrl = `${baseUrl}/api/health`;
 
+  // This app has no legitimate use for camera/mic/geolocation/notifications
+  // etc. — deny every permission request rather than relying on Electron's
+  // default of silently allowing them.
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(false);
+  });
+
   const healthy = await waitForHealthWithBackoff(healthUrl);
-  createWindow();
+  createWindow(baseUrl);
   if (healthy) {
     mainWindow.loadURL(appUrl);
   } else {
