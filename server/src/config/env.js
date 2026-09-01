@@ -1,3 +1,4 @@
+const path = require('path');
 require('dotenv').config();
 
 function required(name, fallback) {
@@ -24,7 +25,13 @@ const env = {
   // deployment that chooses to serve the frontend from the same origin
   // (see DEPLOYMENT.md) — NOT specific to loopback-only, so this must stay
   // decoupled from `isLoopbackOnly` below.
-  staticDir: process.env.STATIC_DIR || null,
+  // path.resolve() converts a relative value (e.g. a hosted deployment's
+  // STATIC_DIR=public, resolved against the working directory the start
+  // command runs from) to absolute, and leaves an already-absolute value
+  // (the desktop app always passes one) unchanged — res.sendFile() throws
+  // if given a relative path with no `root` option, so this must never be
+  // relative by the time app.js uses it.
+  staticDir: process.env.STATIC_DIR ? path.resolve(process.env.STATIC_DIR) : null,
   // Set ONLY by the packaged Electron desktop app (never by a hosted
   // deployment) — true means the server is reachable exclusively over plain
   // http://localhost (loopback, never a real network), so cookies must NOT

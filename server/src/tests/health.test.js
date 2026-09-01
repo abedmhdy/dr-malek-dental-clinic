@@ -1,9 +1,27 @@
 require('./testSafety');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { PrismaClient } = require('@prisma/client');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
 const request = require('supertest');
 const { app, closeAllConnections } = require('./helpers');
+
+// A PrismaClient constructed against a host that doesn't resolve at all
+// (as opposed to one that times out) can emit its connection error as an
+// uncaught event from the engine's own stderr-processing pipe, outside the
+// promise chain a plain .then(resolve, reject) can catch — a real Prisma/
+// Windows quirk, not something server/src/services/healthService.js itself
+// is vulnerable to (proven separately, live, against the packaged app: a
+// genuinely unreachable Neon host correctly produced a clean 503, never a
+// crash). Isolating the broken client in its own short-lived process here
+// means that quirk can only ever crash the child, never this test run.
+const CHECK_SCRIPT = path.join(__dirname, 'checkUnreachable.js');
+
+function checkUnreachableInSubprocess() {
+  const start = Date.now();
+  const out = execFileSync(process.execPath, [CHECK_SCRIPT], { encoding: 'utf8' }).trim();
+  return { reachable: out === 'true', elapsed: Date.now() - start };
+}
 
 describe('Health check', () => {
   test('DB available: /api/health reports 200 and database:"ok"', async () => {
@@ -12,29 +30,10 @@ describe('Health check', () => {
     assert.deepEqual(res.body, { status: 'ok', database: 'ok' });
   });
 
-  test('DB unavailable: the same bounded-timeout check used by /api/health resolves to unreachable, quickly, for a genuinely dead host', async () => {
-    // Exercises the exact mechanism server/src/services/healthService.js
-    // uses (SELECT 1 raced against a timeout) against a connection that can
-    // never succeed, using an isolated PrismaClient so the shared
-    // connection this whole test suite depends on is never touched.
-    const brokenPrisma = new PrismaClient({
-      datasources: { db: { url: 'postgresql://baduser:badpass@nonexistent-host-for-testing.invalid:5432/db' } },
-    });
-
-    const timeoutMs = 3000;
-    const start = Date.now();
-    const timeout = new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs));
-    const check = brokenPrisma.$queryRaw`SELECT 1`.then(
-      () => true,
-      () => false
-    );
-    const reachable = await Promise.race([check, timeout]);
-    const elapsed = Date.now() - start;
-
+  test('DB unavailable: the same bounded-timeout check used by /api/health resolves to unreachable, quickly, for a genuinely dead host', () => {
+    const { reachable, elapsed } = checkUnreachableInSubprocess();
     assert.equal(reachable, false);
-    assert.ok(elapsed <= timeoutMs + 500, `should not hang well past the ${timeoutMs}ms bound (took ${elapsed}ms)`);
-
-    await brokenPrisma.$disconnect();
+    assert.ok(elapsed <= 6000, `should not hang well past the check's own 3s bound (took ${elapsed}ms)`);
   });
 
   test('the health response never includes a hostname, credential, or raw error', async () => {
@@ -48,15 +47,8 @@ describe('Health check', () => {
     // state — checking an unreachable connection and then a working one
     // back-to-back must independently reflect each connection's real state,
     // exactly what a doctor's PC needs after internet/Neon comes back.
-    const brokenPrisma = new PrismaClient({
-      datasources: { db: { url: 'postgresql://baduser:badpass@nonexistent-host-for-testing.invalid:5432/db' } },
-    });
-    const down = await Promise.race([
-      brokenPrisma.$queryRaw`SELECT 1`.then(() => true, () => false),
-      new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
-    ]);
+    const { reachable: down } = checkUnreachableInSubprocess();
     assert.equal(down, false);
-    await brokenPrisma.$disconnect();
 
     // Immediately after — the app's real (working) connection must report healthy.
     const res = await request(app).get('/api/health');

@@ -25,6 +25,16 @@ describe('Security', () => {
 
   test('every major resource route requires authentication', async () => {
     const anon = request.agent(app);
+    // CSRF protection runs before the auth check on every state-changing
+    // request (defense in depth — you can't even attempt a write without a
+    // valid token, authenticated or not). A POST/PUT/DELETE sent with no
+    // token correctly fails CSRF (403) before ever reaching requireAuth, so
+    // the auth-specifically test below supplies a valid (session-scoped,
+    // still-anonymous) CSRF token for those methods to isolate what it's
+    // actually testing: that the route itself still requires a session.
+    const me = await anon.get('/api/auth/me');
+    const csrfToken = me.body.csrfToken;
+
     const routes = [
       ['get', '/api/patients'],
       ['get', '/api/appointments?from=2027-01-01&to=2027-01-31'],
@@ -36,7 +46,9 @@ describe('Security', () => {
       ['post', '/api/payments'],
     ];
     for (const [method, path] of routes) {
-      const res = await anon[method](path);
+      const req = anon[method](path);
+      if (method !== 'get') req.set('X-CSRF-Token', csrfToken);
+      const res = await req;
       assert.equal(res.status, 401, `${method.toUpperCase()} ${path} should require auth`);
     }
   });

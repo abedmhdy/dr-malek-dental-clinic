@@ -1,8 +1,10 @@
 // Run once (or whenever the schema changes) before `npm test`:
 //   TEST_DATABASE_URL="postgresql://postgres:YOUR_LOCAL_PASSWORD@localhost:5432/dental_clinic_test" node src/tests/setupTestDb.js
-// Creates the local test database if it doesn't exist yet, then pushes the
-// current Prisma schema into it (schema-only sync — no migration history
-// needed for a throwaway database that gets recreated freely).
+// Creates the local test database if it doesn't exist yet, then applies the
+// real migration history (`prisma migrate deploy`) — NOT `db push`, which
+// only syncs what's expressible in schema.prisma and silently skips raw SQL
+// a migration file contains directly (e.g. this project's patient-number
+// sequence), leaving the test database subtly out of sync with production.
 const { execFileSync } = require('child_process');
 const { Client } = require('pg');
 
@@ -46,14 +48,47 @@ async function ensureDatabaseExists() {
   }
 }
 
+// connect-pg-simple's own createTableIfMissing races itself when several
+// test files (each a separate process, per node --test's default
+// concurrency) hit it at the same instant — "IF NOT EXISTS" isn't atomic
+// across concurrent connections at the Postgres catalog level. Creating it
+// once, upfront, serially, avoids that race entirely — every test file's
+// createTableIfMissing then finds it already there and does nothing.
+async function ensureSessionTable() {
+  const client = new Client({ connectionString: testUrl });
+  await client.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "session" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL
+      ) WITH (OIDS=FALSE);
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey' AND conrelid = '"session"'::regclass
+        ) THEN
+          ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+        END IF;
+      END $$;
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`);
+  } finally {
+    await client.end();
+  }
+}
+
 async function main() {
   await ensureDatabaseExists();
-  console.log('Pushing schema...');
-  execFileSync(process.execPath, [PRISMA_CLI, 'db', 'push', '--skip-generate'], {
+  console.log('Applying migrations...');
+  execFileSync(process.execPath, [PRISMA_CLI, 'migrate', 'deploy'], {
     cwd: __dirname + '/../..',
     env: { ...process.env, DATABASE_URL: testUrl, DIRECT_URL: testUrl },
     stdio: 'inherit',
   });
+  await ensureSessionTable();
   console.log('Test database ready.');
 }
 
