@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const request = require('supertest');
 const app = require('../app');
 const prisma = require('../db/prismaClient');
+const sessionMiddleware = require('../config/session');
 
 // Every fictional record created for tests carries this marker in a name/
 // notes field so cleanup can find and remove exactly what a test created,
@@ -87,6 +88,21 @@ async function cleanupAllTestData() {
   await prisma.user.deleteMany({ where: { id: { in: doctorIds } } });
 }
 
+// Closes every long-lived connection/timer this test file's process opened
+// (Prisma's pool, the session store's pool) so `node --test` sees the
+// process exit naturally instead of hanging after the last test finishes.
+async function closeAllConnections() {
+  await prisma.$disconnect();
+  await new Promise((resolve) => sessionMiddleware.store.close(resolve));
+}
+
+// Runs cleanup and connection teardown together — the one call every test
+// file's `test.after(...)` should use.
+async function teardown() {
+  await cleanupAllTestData();
+  await closeAllConnections();
+}
+
 module.exports = {
   app,
   prisma,
@@ -96,4 +112,6 @@ module.exports = {
   loginAsNewDoctor,
   createTestPatient,
   cleanupAllTestData,
+  closeAllConnections,
+  teardown,
 };

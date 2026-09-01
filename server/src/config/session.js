@@ -14,7 +14,11 @@ const store = new pgSession({
   conString: env.databaseUrl,
   tableName: 'session',
   createTableIfMissing: true,
-  pruneSessionInterval: 60 * 60, // seconds; expired-session cleanup, not user-facing
+  // Periodic expired-session cleanup — not user-facing. Disabled under test:
+  // it's a long-lived setInterval that would otherwise keep every test-file
+  // process alive indefinitely (a short test run has no need to prune
+  // anything, and `node --test` waits for the process to exit naturally).
+  pruneSessionInterval: env.nodeEnv === 'test' ? false : 60 * 60,
 });
 
 store.on('error', (err) => {
@@ -45,3 +49,4 @@ const sessionMiddleware = session({
 });
 
 module.exports = sessionMiddleware;
+module.exports.store = store;

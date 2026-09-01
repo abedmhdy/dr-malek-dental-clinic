@@ -3,7 +3,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { PrismaClient } = require('@prisma/client');
 const request = require('supertest');
-const { app } = require('./helpers');
+const { app, closeAllConnections } = require('./helpers');
 
 describe('Health check', () => {
   test('DB available: /api/health reports 200 and database:"ok"', async () => {
@@ -42,4 +42,27 @@ describe('Health check', () => {
     const asString = JSON.stringify(res.body);
     assert.doesNotMatch(asString, /postgres|neon\.tech|password|error/i);
   });
+
+  test('recovery: a working connection reports healthy again after an unreachable one reported down', async () => {
+    // Proves the health-check mechanism has no persistent "stuck unhealthy"
+    // state — checking an unreachable connection and then a working one
+    // back-to-back must independently reflect each connection's real state,
+    // exactly what a doctor's PC needs after internet/Neon comes back.
+    const brokenPrisma = new PrismaClient({
+      datasources: { db: { url: 'postgresql://baduser:badpass@nonexistent-host-for-testing.invalid:5432/db' } },
+    });
+    const down = await Promise.race([
+      brokenPrisma.$queryRaw`SELECT 1`.then(() => true, () => false),
+      new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
+    ]);
+    assert.equal(down, false);
+    await brokenPrisma.$disconnect();
+
+    // Immediately after — the app's real (working) connection must report healthy.
+    const res = await request(app).get('/api/health');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.database, 'ok');
+  });
 });
+
+test.after(closeAllConnections);

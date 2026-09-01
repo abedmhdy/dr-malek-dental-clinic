@@ -2,7 +2,7 @@ require('./testSafety');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const { app, loginAsNewDoctor, createTestDoctor, cleanupAllTestData } = require('./helpers');
+const { app, loginAsNewDoctor, createTestDoctor, teardown } = require('./helpers');
 
 describe('Authentication', () => {
   test('correct login succeeds and returns the safe user shape', async () => {
@@ -75,4 +75,4 @@ describe('Authentication', () => {
   });
 });
 
-test.after(cleanupAllTestData);
+test.after(teardown);

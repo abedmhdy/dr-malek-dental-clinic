@@ -6,6 +6,12 @@
 const { execFileSync } = require('child_process');
 const { Client } = require('pg');
 
+// Invokes Prisma's CLI entry point directly with the current Node binary,
+// rather than shelling out to `npx` (which needs shell:true on Windows —
+// a real footgun if these args were ever user-controlled; they aren't
+// here, but there's no reason to carry the risk when this is just as easy).
+const PRISMA_CLI = require.resolve('prisma/build/index.js');
+
 const testUrl = process.env.TEST_DATABASE_URL;
 if (!testUrl) {
   console.error('Set TEST_DATABASE_URL to a local (localhost/127.0.0.1) Postgres connection string first.');
@@ -43,11 +49,10 @@ async function ensureDatabaseExists() {
 async function main() {
   await ensureDatabaseExists();
   console.log('Pushing schema...');
-  execFileSync('npx', ['prisma', 'db', 'push', '--skip-generate'], {
+  execFileSync(process.execPath, [PRISMA_CLI, 'db', 'push', '--skip-generate'], {
     cwd: __dirname + '/../..',
     env: { ...process.env, DATABASE_URL: testUrl, DIRECT_URL: testUrl },
     stdio: 'inherit',
-    shell: true,
   });
   console.log('Test database ready.');
 }

@@ -49,6 +49,11 @@ those steps on a platform of your choosing.
   desktop variant: run it with `DESKTOP_BACKEND_URL` set, and the installer
   it produces contains **no database credential of any kind** — only the
   backend's public URL.
+- Session storage is now `connect-pg-simple` (a `session` table in the same
+  Neon database) instead of the in-memory store — a prerequisite for
+  hosting, since a hosted platform can restart/redeploy the backend process
+  at any time, and an in-memory store would silently log everyone out on
+  every restart. Verified surviving a real backend restart.
 
 ## What you still need to decide and do
 

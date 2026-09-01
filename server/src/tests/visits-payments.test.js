@@ -1,7 +1,7 @@
 require('./testSafety');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { loginAsNewDoctor, createTestPatient, cleanupAllTestData } = require('./helpers');
+const { loginAsNewDoctor, createTestPatient, teardown } = require('./helpers');
 
 describe('Visits and payments', () => {
   test('recording a visit adds it to the patient treatment history', async () => {
@@ -103,4 +103,4 @@ describe('Visits and payments', () => {
   });
 });
 
-test.after(cleanupAllTestData);
+test.after(teardown);

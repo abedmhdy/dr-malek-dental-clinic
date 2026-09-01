@@ -19,6 +19,7 @@ const OFFLINE_PAGE = path.join(__dirname, 'offline.html');
 let backendProcess = null;
 let mainWindow = null;
 let backgroundPollTimer = null;
+let currentBaseUrl = null;
 
 function resourcePath(...segments) {
   const base = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'resources');
@@ -289,6 +290,7 @@ app.whenReady().then(async () => {
     callback(false);
   });
 
+  currentBaseUrl = baseUrl;
   const healthy = await waitForHealthWithBackoff(healthUrl);
   createWindow(baseUrl);
   if (healthy) {
@@ -313,5 +315,8 @@ app.on('before-quit', stopBackend);
 app.on('will-quit', stopBackend);
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0 && currentBaseUrl) {
+    createWindow(currentBaseUrl);
+    mainWindow.loadURL(`${currentBaseUrl}/login`);
+  }
 });

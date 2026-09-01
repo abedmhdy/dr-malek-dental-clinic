@@ -2,7 +2,7 @@ require('./testSafety');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const { app, loginAsNewDoctor, createTestPatient, cleanupAllTestData } = require('./helpers');
+const { app, loginAsNewDoctor, createTestPatient, teardown } = require('./helpers');
 
 describe('Security', () => {
   test('a state-changing request without a CSRF token is rejected', async () => {
@@ -61,4 +61,4 @@ describe('Security', () => {
   });
 });
 
-test.after(cleanupAllTestData);
+test.after(teardown);

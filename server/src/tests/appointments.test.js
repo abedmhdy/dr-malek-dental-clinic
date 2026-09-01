@@ -1,7 +1,7 @@
 require('./testSafety');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { loginAsNewDoctor, createTestPatient, unique, cleanupAllTestData } = require('./helpers');
+const { loginAsNewDoctor, createTestPatient, unique, teardown } = require('./helpers');
 
 describe('Appointments', () => {
   test('create and edit an appointment', async () => {
@@ -84,4 +84,4 @@ describe('Appointments', () => {
   });
 });
 
-test.after(cleanupAllTestData);
+test.after(teardown);
