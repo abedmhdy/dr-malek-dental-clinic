@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+// The frontend is always served from the same origin as its own API — the
+// desktop app's local backend serves it over loopback, and the hosted
+// backend serves it over its own real domain — so a relative "/api" base
+// resolves correctly in both cases automatically, with no build-time
+// knowledge of which origin it'll actually run on. VITE_API_URL stays as
+// an explicit override only for local `vite dev` (client and server run on
+// different ports there, so a relative path wouldn't reach the backend).
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 // Holds the current CSRF token in memory (never in localStorage — it is
 // session-scoped and re-issued by the server on every /auth/me or /login).
