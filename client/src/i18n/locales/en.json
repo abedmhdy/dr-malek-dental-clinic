@@ -233,7 +233,6 @@
     "noPayments": "No payments recorded yet.",
     "overpaymentWarning": "This payment ({{amount}}) exceeds the remaining balance ({{remaining}}). Record it anyway?",
     "outstandingBalance": "Outstanding balance",
-    "paymentsToday": "Payments received today",
     "status_ACTIVE": "Active",
     "status_COMPLETED": "Completed",
     "status_CANCELLED": "Cancelled"

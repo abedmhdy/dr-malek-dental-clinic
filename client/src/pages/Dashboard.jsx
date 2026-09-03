@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { getDashboardSummary } from '../api/misc';
 import { setAppointmentStatus, cancelAppointment } from '../api/appointments';
 import { formatFullDate } from '../utils/dateFormat';
-import { formatMoney } from '../utils/money';
 import AppointmentCard from '../components/appointments/AppointmentCard';
 import EmptyState from '../components/common/EmptyState';
 import { PageSpinner } from '../components/common/Spinner';
@@ -74,12 +73,10 @@ export default function Dashboard() {
         <SummaryCard value={data.counts.totalPatients} label={t('dashboard.summaryTotalPatients')} />
         <SummaryCard value={data.counts.completedToday} label={t('dashboard.summaryCompleted')} />
         <SummaryCard value={data.counts.cancelledToday} label={t('dashboard.summaryCancelled')} />
-        {/* Total outstanding balance intentionally not shown here — the
-            doctor wants that figure kept inside each patient's own profile,
-            not surfaced as a clinic-wide number on the home page. */}
-        {data.finance && (
-          <SummaryCard value={formatMoney(data.finance.paymentsReceivedToday)} label={t('finance.paymentsToday')} />
-        )}
+        {/* Total outstanding balance and today's received payments are
+            intentionally not shown here — the doctor wants those figures
+            kept inside each patient's own profile, not surfaced as
+            clinic-wide numbers on the home page. */}
       </div>
 
       <div className="card">

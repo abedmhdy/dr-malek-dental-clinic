@@ -233,7 +233,6 @@
     "noPayments": "עדיין לא נרשמו תשלומים.",
     "overpaymentWarning": "תשלום זה ({{amount}}) עולה על היתרה לתשלום ({{remaining}}). לרשום בכל זאת?",
     "outstandingBalance": "יתרה לגבייה",
-    "paymentsToday": "תשלומים שהתקבלו היום",
     "status_ACTIVE": "פעילה",
     "status_COMPLETED": "הושלמה",
     "status_CANCELLED": "בוטלה"

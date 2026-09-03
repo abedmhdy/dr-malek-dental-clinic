@@ -233,7 +233,6 @@
     "noPayments": "لا توجد دفعات مسجلة بعد.",
     "overpaymentWarning": "هذه الدفعة ({{amount}}) تتجاوز المبلغ المتبقي ({{remaining}}). هل تريد تسجيلها على أي حال؟",
     "outstandingBalance": "الرصيد المستحق",
-    "paymentsToday": "الدفعات المستلمة اليوم",
     "status_ACTIVE": "نشطة",
     "status_COMPLETED": "مكتملة",
     "status_CANCELLED": "ملغاة"
